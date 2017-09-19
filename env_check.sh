@@ -4,7 +4,7 @@ LIBVIRT_DIR=/home/$USER/libvirt
 
 # check and create libvirt directory and sub dir.
 
-if [ -z $LIBVIRT_DIR ]; then
+if [ ! -e $LIBVIRT_DIR ]; then
   if [ -d $LIBVIRT_DIR ]; then
       echo "$LIBVIRT_DIR is not a directory!"
       exit 1
