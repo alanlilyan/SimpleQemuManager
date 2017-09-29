@@ -149,7 +149,7 @@ static char * qemu_common_option[] = {
     "-chardev", "spicevmc,name=usbredir,id=usbredirchardev3",
     "-device", "usb-redir,chardev=usbredirchardev3,id=usbredirdev3,bus=usb.0,port=3",
     "-device", "virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0x6",
-    "-msg", "timestamp=on",
+    /* "-msg", "timestamp=on", */
 };
 
 static void logout(char *fmt, ...)
@@ -374,7 +374,7 @@ static char buf[12][256];
 static char **arglist;
 
 #define BASE_PORT 9500
-#define PER_CPU 1
+#define PER_CPU 2
 static const uint32_t mem_defaut = 2048;
 static const uint32_t smp_defaut = PER_CPU;
 
@@ -403,7 +403,7 @@ static void fill_arglist(qemu_proc_t * qemu_proc)
 
     memset(buf, 0, sizeof(buf));
     sprintf(buf[0], "-name");
-    sprintf(buf[1], "qemu-%3d", vm_id);
+    sprintf(buf[1], "qemu-%03d", vm_id);
 
     sprintf(buf[2], "-m");
     sprintf(buf[3], "%u", mem_defaut);
@@ -419,7 +419,7 @@ static void fill_arglist(qemu_proc_t * qemu_proc)
 
     int port = BASE_PORT + vm_id;
     sprintf(buf[10], "-spice");
-    sprintf(buf[11], "port=%d,disable-ticketing,jpeg-wan-compression=never,streaming-video=all", port);
+    sprintf(buf[11], "port=%d,disable-ticketing,jpeg-wan-compression=auto,streaming-video=all", port);
 
     // sprintf(buf[12], "-D");
     // sprintf(buf[13], "/home/alan/libvirt/log/vm-%d", qemu_proc->vm_id);
@@ -720,6 +720,8 @@ static ATTR_UNUSED void wait_child(void)
 static void loop_event(void)
 {
     int fd, maxfd;
+    int status;
+    pid_t pid;
 
     fd_set *listen_set = &virt_server.listen_set;
 
@@ -730,8 +732,19 @@ static void loop_event(void)
 
     logout("==== start loop ====\n");
     while (1) {
+        /* Reset timeout caused of the signal will take effect on selec() function. */
         timeout.tv_sec = 60;
-        // wait_child();
+        timeout.tv_usec = 0;
+
+        /* Check child-process exiting in loop.
+         * The signal handler is deperacted because of the multi-thread safe
+         * problem.
+         * */
+        pid = waitpid(-1, &status, WNOHANG);
+        if (pid > 0) {
+            logout("qemu sub-process (%d) exit, status (%d).\n", pid, status);
+            free_qemu_with_pid(pid);
+        }
 
         FD_ZERO(listen_set);
         FD_SET(virt_server.listenfd, listen_set);
@@ -741,7 +754,7 @@ static void loop_event(void)
 
         maxfd = virt_server.connfd > virt_server.listenfd ? virt_server.connfd + 1: virt_server.listenfd + 1;
         fd = select(maxfd, listen_set, NULL, NULL, &timeout);
-        logout("---- test select ----\n");
+        /* logout("---- test select ----\n"); */
 
         if (fd == -1) {
             if(errno == EINTR) {
@@ -794,7 +807,8 @@ void wait4child(int signo)
 {
     int status;
     pid_t pid;
-    while((pid = waitpid(-1, &status, 0)) > 0) {
+
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         logout("qemu sub-process (%d) exit, status (%d).\n", pid, status);
         free_qemu_with_pid(pid);
     }
@@ -819,7 +833,7 @@ int main(int argc, char *argv[])
 
     init_pid_file();
 
-    set_signal();
+    /* set_signal(); */
 
     server_init();
 
